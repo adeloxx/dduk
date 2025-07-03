@@ -200,12 +200,34 @@
 
     // 상태
     let nickname = '';
-    let currentStep = 0; // 0: 닉네임, 1~5: 설문, 6: 결과
+    let currentStep = 0; // 0: 닉네임, 1~5: 설문, 6: 결과, 7: 결과 리스트
     let answers = [];
     let nicknameError = '';
     // 입력창 포커스 상태와 커서 위치 저장용
     let nicknameInputHasFocus = false;
     let nicknameInputCursorPos = 0;
+
+    // 결과 저장/조회 함수
+    function saveResult(nickname, tablet) {
+      const now = Date.now();
+      let arr = [];
+      try {
+        arr = JSON.parse(localStorage.getItem('tabletResults') || '[]');
+      } catch {}
+      arr.push({ nickname, tablet, time: now });
+      // 100개까지만 저장
+      if (arr.length > 100) arr = arr.slice(arr.length - 100);
+      localStorage.setItem('tabletResults', JSON.stringify(arr));
+    }
+    function getRecentResults() {
+      const now = Date.now();
+      let arr = [];
+      try {
+        arr = JSON.parse(localStorage.getItem('tabletResults') || '[]');
+      } catch {}
+      // 10분(600,000ms) 이내 결과만
+      return arr.filter(r => now - r.time <= 600000).reverse();
+    }
 
     const app = document.getElementById('app');
 
@@ -222,17 +244,20 @@
           </div>
           <div class="start-btn-wrap">
             <button id="startBtn" disabled>설문 시작하기</button>
+            <button id="viewOthersBtn" style="margin-top:10px;background:#f3f8ff;color:#4f8cff;">다른 사람의 결과 보기</button>
           </div>
         `;
         const nicknameInput = document.getElementById('nickname');
         const nicknameHint = document.getElementById('nickname-hint');
         const startBtn = document.getElementById('startBtn');
+        const viewOthersBtn = document.getElementById('viewOthersBtn');
         let isComposing = false;
         nicknameInput.value = nickname;
         nicknameHint.textContent = nicknameError;
         function updateBtnAndHint() {
           nicknameHint.textContent = nicknameError;
           startBtn.disabled = !(nickname.trim() && !nicknameError);
+          viewOthersBtn.disabled = !(nickname.trim() && !nicknameError);
         }
         nicknameInput.addEventListener('compositionstart', () => {
           isComposing = true;
@@ -259,6 +284,10 @@
         });
         startBtn.addEventListener('click', () => {
           currentStep = 1;
+          render();
+        });
+        viewOthersBtn.addEventListener('click', () => {
+          currentStep = 7;
           render();
         });
       } else if (currentStep >= 1 && currentStep <= questions.length) {
@@ -291,9 +320,11 @@
             render();
           }
         });
-      } else {
+      } else if (currentStep === 6) {
         // 결과 화면
         const { name: tablet, desc } = getTabletRecommendation(answers);
+        // 결과 저장
+        saveResult(nickname, tablet);
         app.innerHTML = `
           <div class="result-header">설문 결과</div>
           <div class="result">
@@ -302,7 +333,28 @@
             <div class="product-desc">${desc}</div>
           </div>
           <button onclick="location.reload()">다시하기</button>
+          <button id="viewOthersBtn" style="margin-top:10px;background:#f3f8ff;color:#4f8cff;">다른 사람의 결과 보기</button>
         `;
+        document.getElementById('viewOthersBtn').addEventListener('click', () => {
+          currentStep = 7;
+          render();
+        });
+      } else if (currentStep === 7) {
+        // 다른 사람의 결과 리스트 화면
+        const results = getRecentResults();
+        app.innerHTML = `
+          <div class="result-header">최근 10분 이내 결과</div>
+          <div class="result" style="margin-bottom:24px;">
+            ${results.length === 0 ? '<div style="color:#aaa;">최근 10분 이내 결과가 없습니다.</div>' :
+              results.map(r => `<div style="margin-bottom:10px;">${r.nickname}님의 찰떡 태블릿은 <b>${r.tablet}</b>입니다.</div>`).join('')}
+          </div>
+          <button id="backBtn">돌아가기</button>
+        `;
+        document.getElementById('backBtn').addEventListener('click', () => {
+          // 첫 화면에서 온 경우 0, 결과 화면에서 온 경우 6으로 복귀
+          currentStep = nickname && answers.length === 5 ? 6 : 0;
+          render();
+        });
       }
     }
 
